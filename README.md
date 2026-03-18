@@ -264,20 +264,196 @@ Click on **Debug and simulate using simulation** as shown below.
 
 # STM32 CUBE PROGRAM
 
+## main.c
+
 ```c
-/* USER CODE BEGIN Header */
-/**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-...
-(The full program remains exactly the same as provided.)
-...
-/************************ (C) COPYRIGHT STMicroelectronics ****END OF FILE*/
+#include "main.h"
+#include <string.h>
+
+/* LCD Pin Definitions */
+#define RS GPIO_PIN_0
+#define EN GPIO_PIN_1
+#define D4 GPIO_PIN_2
+#define D5 GPIO_PIN_3
+#define D6 GPIO_PIN_4
+#define D7 GPIO_PIN_5
+#define LCD_PORT GPIOA
+
+/* Keypad Pins */
+GPIO_TypeDef* row_ports[4] = {GPIOB, GPIOB, GPIOB, GPIOB};
+uint16_t row_pins[4] = {GPIO_PIN_0, GPIO_PIN_1, GPIO_PIN_2, GPIO_PIN_3};
+
+GPIO_TypeDef* col_ports[4] = {GPIOB, GPIOB, GPIOB, GPIOB};
+uint16_t col_pins[4] = {GPIO_PIN_4, GPIO_PIN_5, GPIO_PIN_6, GPIO_PIN_7};
+
+/* Key map */
+char keymap[4][4] = {
+    {'1','2','3','A'},
+    {'4','5','6','B'},
+    {'7','8','9','C'},
+    {'*','0','#','D'}
+};
+
+/* Function Prototypes */
+void SystemClock_Config(void);
+static void MX_GPIO_Init(void);
+
+/* LCD Functions */
+void LCD_Enable(void);
+void LCD_Send4Bits(uint8_t data);
+void LCD_Send_Command(uint8_t cmd);
+void LCD_Send_Data(uint8_t data);
+void LCD_Init(void);
+void LCD_Send_String(char *str);
+void LCD_Clear(void);
+
+/* Keypad Function */
+char Keypad_Scan(void);
+
+/* MAIN */
+int main(void)
+{
+    HAL_Init();
+    SystemClock_Config();
+    MX_GPIO_Init();
+    LCD_Init();
+
+    LCD_Send_String("Press Key:");
+
+    while (1)
+    {
+        char key = Keypad_Scan();
+
+        if (key != 0)
+        {
+            LCD_Clear();
+            LCD_Send_String("Key: ");
+            LCD_Send_Data(key);
+            HAL_Delay(300);
+        }
+    }
+}
 ```
 
 ---
+
+# 4. LCD Driver
+
+```c
+void LCD_Enable()
+{
+    HAL_GPIO_WritePin(LCD_PORT, EN, GPIO_PIN_SET);
+    HAL_Delay(1);
+    HAL_GPIO_WritePin(LCD_PORT, EN, GPIO_PIN_RESET);
+    HAL_Delay(1);
+}
+
+void LCD_Send4Bits(uint8_t data)
+{
+    HAL_GPIO_WritePin(LCD_PORT, D4, (data & 0x01) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(LCD_PORT, D5, (data & 0x02) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(LCD_PORT, D6, (data & 0x04) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(LCD_PORT, D7, (data & 0x08) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+}
+
+void LCD_Send_Command(uint8_t cmd)
+{
+    HAL_GPIO_WritePin(LCD_PORT, RS, GPIO_PIN_RESET);
+
+    LCD_Send4Bits(cmd >> 4);
+    LCD_Enable();
+
+    LCD_Send4Bits(cmd & 0x0F);
+    LCD_Enable();
+
+    HAL_Delay(2);
+}
+
+void LCD_Send_Data(uint8_t data)
+{
+    HAL_GPIO_WritePin(LCD_PORT, RS, GPIO_PIN_SET);
+
+    LCD_Send4Bits(data >> 4);
+    LCD_Enable();
+
+    LCD_Send4Bits(data & 0x0F);
+    LCD_Enable();
+
+    HAL_Delay(2);
+}
+
+void LCD_Init()
+{
+    HAL_Delay(50);
+
+    LCD_Send4Bits(0x03);
+    LCD_Enable();
+    HAL_Delay(5);
+
+    LCD_Send4Bits(0x03);
+    LCD_Enable();
+    HAL_Delay(1);
+
+    LCD_Send4Bits(0x03);
+    LCD_Enable();
+
+    LCD_Send4Bits(0x02);
+    LCD_Enable();
+
+    LCD_Send_Command(0x28);
+    LCD_Send_Command(0x0C);
+    LCD_Send_Command(0x06);
+    LCD_Send_Command(0x01);
+}
+
+void LCD_Send_String(char *str)
+{
+    while (*str) LCD_Send_Data(*str++);
+}
+
+void LCD_Clear()
+{
+    LCD_Send_Command(0x01);
+    HAL_Delay(2);
+}
+```
+
+---
+
+# 5. Keypad Scanning Logic
+
+```c
+char Keypad_Scan(void)
+{
+    for (int i = 0; i < 4; i++)
+    {
+        /* Set all rows HIGH */
+        for (int j = 0; j < 4; j++)
+            HAL_GPIO_WritePin(row_ports[j], row_pins[j], GPIO_PIN_SET);
+
+        /* Pull current row LOW */
+        HAL_GPIO_WritePin(row_ports[i], row_pins[i], GPIO_PIN_RESET);
+
+        /* Check columns */
+        for (int k = 0; k < 4; k++)
+        {
+            if (HAL_GPIO_ReadPin(col_ports[k], col_pins[k]) == GPIO_PIN_RESET)
+            {
+                HAL_Delay(50); // debounce
+
+                while (HAL_GPIO_ReadPin(col_ports[k], col_pins[k]) == GPIO_PIN_RESET);
+
+                return keymap[i][k];
+            }
+        }
+    }
+    return 0;
+}
+```
+
+---
+
+
 
 # Output Screen Shots of Proteus
 
